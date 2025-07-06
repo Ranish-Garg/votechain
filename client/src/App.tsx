@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Vote, Users, Award, TrendingUp, CheckCircle } from "lucide-react";
 import { ethers, BrowserProvider } from "ethers";
-import {contractabi,contractaddress} from "./constant.ts"
+import { contractabi, contractaddress } from "./constant.ts";
 
 declare global {
   interface Window {
@@ -10,62 +10,40 @@ declare global {
 }
 
 interface Candidate {
-  name: string;
+  candidatename: string;
   image: string;
   votes: number;
 }
 
-// const initialCandidates: Candidate[] = [
-//   {
-//     name: "Alexandra Chen",
-//     image:
-//       "https://images.pexels.com/photos/3777943/pexels-photo-3777943.jpeg?auto=compress&cs=tinysrgb&w=400",
-//     votes: 0,
-//   },
-//   {
-//     name: "Marcus Rodriguez",
-//     image:
-//       "https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=400",
-//     votes: 0,
-//   },
-//   {
-//     name: "Dr. Sarah Johnson",
-//     image:
-//       "https://images.pexels.com/photos/3769021/pexels-photo-3769021.jpeg?auto=compress&cs=tinysrgb&w=400",
-//     votes: 0,
-//   },
-//   {
-//     name: "James Thompson",
-//     image:
-//       "https://images.pexels.com/photos/2613260/pexels-photo-2613260.jpeg?auto=compress&cs=tinysrgb&w=400",
-//     votes: 0,
-//   },
-// ];
-
 function App() {
-  const [candidates, setCandidates] = useState<Candidate[]>(initialCandidates);
+  const [candidates, setCandidates] = useState<Candidate[] | null>(null);
   const [votedFor, setVotedFor] = useState<number | null>(null);
   const [totalVotes, setTotalVotes] = useState(0);
   const [showResults, setShowResults] = useState(false);
   const [animateResults, setAnimateResults] = useState(false);
- const [votingcontract, setvotingcontract] = useState<ethers.Contract | null>(null);
- const [remainingtime,setremainingtime] = useState<number | null>(null);
-
+  const [votingcontract, setvotingcontract] = useState<ethers.Contract | null>(
+    null
+  );
 
   useEffect(() => {
-    const total = candidates.reduce(
-      (sum, candidate) => sum + candidate.votes,
-      0
-    );
-    setTotalVotes(total);
-  }, [candidates]);
+    if (votingcontract) {
+      console.log("Contract is ready, now fetching candidates...");
 
-  const handleVote = async(indexofcandidate: number) => {
+      
+     console.log('Contract has methods:', votingcontract.interface.fragments.map(f => f.name));
+
+
+      getcandidatesfromchain();
+      Getvotingstatus();
+    }
+  }, [votingcontract]);
+
+  const handleVote = async (indexofcandidate: number) => {
     if (votedFor !== null) return;
-     if (!votingcontract) return;
+    if (!votingcontract) return;
 
     setVotedFor(indexofcandidate);
-    await votingcontract.castvote(indexofcandidate)
+    await votingcontract.castvote(indexofcandidate);
     getcandidatesfromchain();
     setShowResults(true);
 
@@ -75,13 +53,29 @@ function App() {
     }, 500);
   };
 
-  const getcandidatesfromchain = async()=>
-  {
-    console.log("hello")
-      if (!votingcontract) return; 
-    const votes = await votingcontract.getAllVotesOfCandiates();
-    setCandidates(votes);
-  }
+  const getcandidatesfromchain = async () => {
+    if (!votingcontract) return;
+
+    console.log("Fetching candidates from contract...");
+   const rawCandidates = await votingcontract.getAllVotesOfCandidates();
+console.log("Raw candidates:", rawCandidates);
+
+// Destructure tuple
+const [names, images, votes] = rawCandidates;
+
+const formattedCandidates = names.map((_: string, i: number) => ({
+  candidatename: names[i],
+  image: images[i],
+  votes: Number(votes[i]),
+}));
+
+console.log("Formatted candidates:", formattedCandidates);
+setCandidates(formattedCandidates);
+
+const total = formattedCandidates.reduce((acc, curr) => acc + curr.votes, 0);
+setTotalVotes(total);
+
+  };
 
   const getVotePercentage = (votes: number) => {
     return totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
@@ -93,27 +87,25 @@ function App() {
     );
   };
 
-  const Getremainingtime=async()=>
-  {
-      if (!votingcontract) return; 
-    const remainingtime = await votingcontract.getremainingtime()
-  }
+  const Getremainingtime = async () => {
+    if (!votingcontract) return;
+    const remainingtime = await votingcontract.getremainingtime();
+    setRemainingtime(remainingtime);
+  };
 
-  const getvotingstatus = async()=>
-  {
-     if (!votingcontract) return; 
+  const Getvotingstatus = async () => {
+    if (!votingcontract) return;
     const Votingstat = await votingcontract.getvotingstatus();
-    setvotingstat(Votingstat)
-  }
+    setvotingstat(Votingstat);
+  };
 
-  const [Remainingtime , setRemainingtime] =  useState<number | null>(null);
-  const [votingstat,setvotingstat] = useState<boolean | null>(false);
+  const [Remainingtime, setRemainingtime] = useState<number | null>(null);
+  const [votingstat, setvotingstat] = useState<boolean | null>(false);
   const [IsConnected, setIsConnected] = useState<boolean | null>(false);
   const [Account, setAccount] = useState<string | null>(null);
-const [provider, setprovider] = useState<ethers.BrowserProvider | null>(null);
+  const [provider, setprovider] = useState<ethers.BrowserProvider | null>(null);
 
   const [signer, setsigner] = useState<ethers.JsonRpcSigner | null>(null);
-
 
   useEffect(() => {
     if (window.ethereum) {
@@ -166,11 +158,14 @@ const [provider, setprovider] = useState<ethers.BrowserProvider | null>(null);
       setAccount(Address);
       console.log("Metamask Connected: " + Address);
       setIsConnected(true);
-      const votingContract = new ethers.Contract(contractaddress, contractabi, signer);
-      setvotingcontract(votingContract);
-      getcandidatesfromchain();
-      getvotingstatus();
-
+      console.log(contractabi);
+      const VotingContract = new ethers.Contract(
+        contractaddress,
+        contractabi,
+        signer
+      );
+      setvotingcontract(VotingContract);
+      console.log("Connected to contract:", VotingContract.target);
     } catch (err) {
       console.error("Error connecting to MetaMask:", err);
     }
@@ -212,7 +207,7 @@ const [provider, setprovider] = useState<ethers.BrowserProvider | null>(null);
       {/* Main Content */}
 
       {IsConnected ? (
-        <main className="container mx-auto px-6 py-12">
+        <main className="container mx-auto px-6 py-12 flex-grow">
           {/* Voting Status */}
           {votedFor && (
             <div className="mb-12 text-center animate-fade-in-up">
@@ -225,7 +220,7 @@ const [provider, setprovider] = useState<ethers.BrowserProvider | null>(null);
 
           {/* Candidates Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-8 mb-12">
-            {candidates.map((candidate, index) => (
+            {candidates?.map((candidate, index) => (
               <div
                 key={index}
                 className={`group relative bg-gray-800/50 backdrop-blur-sm rounded-2xl overflow-hidden border border-gray-700/50 transition-all duration-500 hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/20 hover:border-purple-500/30 animate-fade-in-up ${
@@ -239,7 +234,7 @@ const [provider, setprovider] = useState<ethers.BrowserProvider | null>(null);
                 <div className="relative h-64 overflow-hidden">
                   <img
                     src={candidate.image}
-                    alt={candidate.name}
+                    alt={candidate.candidatename}
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent opacity-60"></div>
@@ -248,7 +243,7 @@ const [provider, setprovider] = useState<ethers.BrowserProvider | null>(null);
                 {/* Candidate Info */}
                 <div className="p-6">
                   <h3 className="text-2xl font-bold mb-6 text-center text-white group-hover:text-purple-400 transition-colors">
-                    {candidate.name}
+                    {candidate.candidatename}
                   </h3>
 
                   {/* Vote Button */}
@@ -344,12 +339,12 @@ const [provider, setprovider] = useState<ethers.BrowserProvider | null>(null);
                   <div className="inline-flex items-center space-x-4 bg-gradient-to-r from-purple-600/20 to-blue-600/20 px-8 py-4 rounded-xl border border-purple-500/30">
                     <img
                       src={getLeadingCandidate().image}
-                      alt={getLeadingCandidate().name}
+                      alt={getLeadingCandidate().candidatename}
                       className="w-16 h-16 rounded-full object-cover border-2 border-purple-500"
                     />
                     <div className="text-left">
                       <div className="font-bold text-xl text-white">
-                        {getLeadingCandidate().name}
+                        {getLeadingCandidate().candidatename}
                       </div>
                       <div className="text-sm text-gray-400">
                         {getLeadingCandidate().votes} votes
