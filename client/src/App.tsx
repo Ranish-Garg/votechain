@@ -24,57 +24,133 @@ function App() {
   const [votingcontract, setvotingcontract] = useState<ethers.Contract | null>(
     null
   );
+  const [uservoted, setuservoted] = useState(false);
+ 
+const [isLoadingTime, setIsLoadingTime] = useState(false);
 
   useEffect(() => {
-    if (votingcontract) {
-      console.log("Contract is ready, now fetching candidates...");
+    if (votingcontract && Account) {
+      const init = async () => {
+        console.log("Contract is ready, now fetching candidates...");
+        console.log(
+          "Contract has methods:",
+          votingcontract.interface.fragments.map((f) => f.name)
+        );
 
-      
-     console.log('Contract has methods:', votingcontract.interface.fragments.map(f => f.name));
+        await getcandidatesfromchain();
+        await Getvotingstatus();
+        Getremainingtime();
 
+        try {
+          const hasVoted = await votingcontract.hasvoted(Account);
+          console.log("Has voted:", hasVoted);
 
-      getcandidatesfromchain();
+          setuservoted(hasVoted);
+          if (hasVoted) setVotedFor(-1);
+        } catch (err: any) {
+          console.error("Error checking vote status:", err?.message ?? err);
+        }
+      };
+
+      init();
       Getvotingstatus();
+
+      Getremainingtime();
+
+  // Set up polling every 30 seconds to sync with contract
+  const pollInterval = setInterval(Getremainingtime, 30000);
+
+  // Set up client-side countdown between polls
+  const countdownInterval = setInterval(() => {
+    setRemainingtime(prev => {
+      if (prev === null || prev <= 0) {
+        clearInterval(countdownInterval);
+        return 0;
+      }
+      return prev - 1;
+    });
+  }, 1000);
+
+  return () => {
+    clearInterval(pollInterval);
+    clearInterval(countdownInterval);
+  };
     }
+
   }, [votingcontract]);
 
   const handleVote = async (indexofcandidate: number) => {
     if (votedFor !== null) return;
-    if (!votingcontract) return;
+    if (!votingcontract || !Account) return;
 
-    setVotedFor(indexofcandidate);
-    await votingcontract.castvote(indexofcandidate);
-    getcandidatesfromchain();
-    setShowResults(true);
+    try {
+      const hasVoted = await votingcontract.hasvoted(Account);
+      if (hasVoted) {
+        alert("You have already voted.");
+        return;
+      }
 
-    // Trigger results animation
+      const tx = await votingcontract.castvote(indexofcandidate);
+      await tx.wait();
+
+      await getcandidatesfromchain();
+      setVotedFor(indexofcandidate);
+      setShowResults(true);
+      setAnimateResults(true);
+    } catch (error: any) {
+      console.dir(error);
+      const reason =
+        error?.info?.error?.message?.replace("execution reverted: ", "") ??
+        error?.reason ??
+        error?.data?.message ??
+        "Transaction failed";
+      alert("Vote failed: " + reason);
+    }
+
     setTimeout(() => {
       setAnimateResults(true);
     }, 500);
   };
 
+  function formatTime(seconds: number | bigint): string {
+    const secs = Number(seconds); // 👈 safely convert BigInt to number
+    const h = Math.floor(secs / 3600)
+      .toString()
+      .padStart(2, "0");
+    const m = Math.floor((secs % 3600) / 60)
+      .toString()
+      .padStart(2, "0");
+    const s = Math.floor(secs % 60)
+      .toString()
+      .padStart(2, "0");
+    return `${h}:${m}:${s}`;
+  }
+
   const getcandidatesfromchain = async () => {
     if (!votingcontract) return;
 
     console.log("Fetching candidates from contract...");
-   const rawCandidates = await votingcontract.getAllVotesOfCandidates();
-console.log("Raw candidates:", rawCandidates);
+    const rawCandidates = await votingcontract.getAllVotesOfCandidates();
+    console.log("Raw candidates:", rawCandidates);
 
-// Destructure tuple
-const [names, images, votes] = rawCandidates;
+    // Destructure tuple
+    const [names, images, votes] = rawCandidates;
 
-const formattedCandidates = names.map((_: string, i: number) => ({
-  candidatename: names[i],
-  image: images[i],
-  votes: Number(votes[i]),
-}));
+    const formattedCandidates = names.map((_: string, i: number) => ({
+      candidatename: names[i],
+      image: images[i],
+      votes: Number(votes[i]),
+    }));
 
-console.log("Formatted candidates:", formattedCandidates);
-setCandidates(formattedCandidates);
+    console.log("Formatted candidates:", formattedCandidates);
+    setCandidates(formattedCandidates);
 
-const total = formattedCandidates.reduce((acc, curr) => acc + curr.votes, 0);
-setTotalVotes(total);
-
+    const total = formattedCandidates.reduce(
+      (acc, curr) => acc + curr.votes,
+      0
+    );
+    setTotalVotes(total);
+    setShowResults(true);
   };
 
   const getVotePercentage = (votes: number) => {
@@ -87,11 +163,20 @@ setTotalVotes(total);
     );
   };
 
-  const Getremainingtime = async () => {
-    if (!votingcontract) return;
-    const remainingtime = await votingcontract.getremainingtime();
-    setRemainingtime(remainingtime);
-  };
+const Getremainingtime = async () => {
+  if (!votingcontract) return;
+  
+  setIsLoadingTime(true);
+  try {
+    const remaining = await votingcontract.getremainingtime();
+    const remainingNumber = Number(remaining);
+    setRemainingtime(remainingNumber);
+  } catch (error) {
+    console.error("Error fetching remaining time:", error);
+  } finally {
+    setIsLoadingTime(false);
+  }
+};
 
   const Getvotingstatus = async () => {
     if (!votingcontract) return;
@@ -158,7 +243,6 @@ setTotalVotes(total);
       setAccount(Address);
       console.log("Metamask Connected: " + Address);
       setIsConnected(true);
-      console.log(contractabi);
       const VotingContract = new ethers.Contract(
         contractaddress,
         contractabi,
@@ -180,12 +264,28 @@ setTotalVotes(total);
           <div className="animate-fade-in-up">
             <Vote className="w-16 h-16 mx-auto mb-6 text-purple-400 animate-pulse" />
             <h1 className="text-5xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-              DemocracyChain
+              VoteChain
             </h1>
             <p className="text-xl md:text-2xl text-gray-300 mb-8 max-w-3xl mx-auto">
               Your voice matters. Cast your vote in this decentralized election
               and help shape the future of our community.
             </p>
+           {isLoadingTime ? (
+  <div className="mb-5 text-lg text-purple-300 font-mono bg-gray-800/50 px-4 py-2 rounded-xl inline-block">
+    ⏳ Loading time...
+  </div>
+) : Remainingtime !== null ? (
+  <div className="mb-5 text-lg text-purple-300 font-mono bg-gray-800/50 px-4 py-2 rounded-xl inline-block">
+    ⏳ Time Remaining:{" "}
+    <span className="font-bold text-white">
+      {formatTime(Remainingtime)}
+    </span>
+  </div>
+) : (
+  <div className="mb-5 text-lg text-red-300 font-mono bg-gray-800/50 px-4 py-2 rounded-xl inline-block">
+    ⚠️ Failed to load time
+  </div>
+)}
             <div className="flex justify-center items-center space-x-8 text-gray-400">
               <div className="flex items-center space-x-2">
                 <Users className="w-5 h-5" />
@@ -209,7 +309,7 @@ setTotalVotes(total);
       {IsConnected ? (
         <main className="container mx-auto px-6 py-12 flex-grow">
           {/* Voting Status */}
-          {votedFor && (
+          {uservoted && (
             <div className="mb-12 text-center animate-fade-in-up">
               <div className="inline-flex items-center space-x-2 bg-green-500/20 text-green-400 px-6 py-3 rounded-full border border-green-500/30">
                 <CheckCircle className="w-5 h-5" />
@@ -235,7 +335,7 @@ setTotalVotes(total);
                   <img
                     src={candidate.image}
                     alt={candidate.candidatename}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                    className="w-full h-auto object-cover transition-transform duration-500 group-hover:scale-110"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent opacity-60"></div>
                 </div>
@@ -263,7 +363,7 @@ setTotalVotes(total);
                         <CheckCircle className="w-5 h-5" />
                         <span>Voted</span>
                       </span>
-                    ) : votedFor !== null ? (
+                    ) : votedFor !== null || votingstat ==false ? (
                       "Voting Closed"
                     ) : (
                       "Vote Now"
@@ -334,13 +434,13 @@ setTotalVotes(total);
               {totalVotes > 0 && (
                 <div className="text-center">
                   <h3 className="text-xl font-semibold mb-4 text-gray-300">
-                    Current Leader
+                    {votingstat==false ? "Winner" : "Current Leader"}
                   </h3>
                   <div className="inline-flex items-center space-x-4 bg-gradient-to-r from-purple-600/20 to-blue-600/20 px-8 py-4 rounded-xl border border-purple-500/30">
                     <img
                       src={getLeadingCandidate().image}
                       alt={getLeadingCandidate().candidatename}
-                      className="w-16 h-16 rounded-full object-cover border-2 border-purple-500"
+                      className="w-24 h-24 rounded-full object-cover border-2 border-purple-500"
                     />
                     <div className="text-left">
                       <div className="font-bold text-xl text-white">
@@ -371,7 +471,7 @@ setTotalVotes(total);
       <footer className="border-t border-gray-700/50 bg-gray-900/50 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-8 text-center text-gray-400">
           <p>
-            &copy; 2024 DemocracyChain. Empowering voices through decentralized
+            &copy; 2025 VoteChain. Empowering voices through decentralized
             voting.
           </p>
         </div>
