@@ -270,7 +270,7 @@ const Getremainingtime = async () => {
               Your voice matters. Cast your vote in this decentralized election
               and help shape the future of our community.
             </p>
-           {isLoadingTime ? (
+   {IsConnected  &&   (  isLoadingTime ? (
   <div className="mb-5 text-lg text-purple-300 font-mono bg-gray-800/50 px-4 py-2 rounded-xl inline-block">
     ⏳ Loading time...
   </div>
@@ -285,7 +285,7 @@ const Getremainingtime = async () => {
   <div className="mb-5 text-lg text-red-300 font-mono bg-gray-800/50 px-4 py-2 rounded-xl inline-block">
     ⚠️ Failed to load time
   </div>
-)}
+) )} 
             <div className="flex justify-center items-center space-x-8 text-gray-400">
               <div className="flex items-center space-x-2">
                 <Users className="w-5 h-5" />

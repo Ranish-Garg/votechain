@@ -7,8 +7,13 @@ module.exports = {
   networks : {
     localganache: 
     {
-      url : process.env.PROVIDERURL,
-      accounts : [`0x${process.env.PRIVATEKEY}`]
-    }
+      url : process.env.GANACHEPROVIDERURL,
+      accounts : [`0x${process.env.GANACHEPRIVATEKEY}`]
+    },
+    sepolia: {
+      url: process.env.SEPOLIA_RPC,
+      accounts: [`0x${process.env.SEPOLIAPRIVATEKEY}`],
+      chainId: 11155111,
+    },
   }
 };
