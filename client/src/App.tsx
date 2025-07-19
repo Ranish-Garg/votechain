@@ -349,7 +349,7 @@ const Getremainingtime = async () => {
                   {/* Vote Button */}
                   <button
                     onClick={() => handleVote(index)}
-                    disabled={votedFor !== null}
+                    disabled={votedFor !== null || votingstat ==false}
                     className={`w-full py-3 px-6 rounded-xl font-semibold transition-all duration-300 ${
                       votedFor === index
                         ? "bg-green-600 text-white cursor-default"
